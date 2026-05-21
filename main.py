@@ -1,16 +1,20 @@
-from fastapi import FastAPI, HTTPException
+import os
 import joblib
 import numpy as np
+from fastapi import FastAPI, HTTPException, Security, status
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List
+from dotenv import load_dotenv
 
-# 1. Load model and scaler
+# 1. Load the hidden variables from the .env file
+load_dotenv()
+
+# 2. Load ML model and scaler
 model = joblib.load("har_model.pkl")
 scaler = joblib.load("scaler.pkl")
 
-# 2. Define the translation dictionary
-# Update these names to match your exact Kaggle dataset classes!
-# Updated alphabetical mapping based on LabelEncoder
+# 3. Define the translation dictionary
 ACTIVITY_MAP = {
     "0": "LAYING",
     "1": "SITTING",
@@ -19,18 +23,36 @@ ACTIVITY_MAP = {
     "4": "WALKING_DOWNSTAIRS",
     "5": "WALKING_UPSTAIRS"
 }
+
 app = FastAPI()
+
+# --- SECURITY PROTOCOL ---
+# Fetch the key securely from the operating system environment
+API_KEY = os.getenv("API_KEY")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+def get_api_key(api_key: str = Security(api_key_header)):
+    if api_key == API_KEY:
+        return api_key
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Access Denied: Invalid or missing API Key"
+    )
+# -------------------------
 
 class SensorData(BaseModel):
     features: List[float]
+
 @app.get("/")
 def health_check():
     return {
         "status": "Online",
-        "message": "Welcome to the HAR Machine Learning API. Visit https://har-machine-learning-api.onrender.com/docs to interact with the model."
+        "message": "Welcome to the HAR Machine Learning API. Visit /docs to interact with the model."
     }
+
+# Notice the addition of the 'api_key' dependency here to lock the door!
 @app.post("/predict")
-def predict_activity(data: SensorData):
+def predict_activity(data: SensorData, api_key: str = Security(get_api_key)):
     # Validate the data length
     if len(data.features) != scaler.n_features_in_:
         raise HTTPException(
