@@ -69,6 +69,22 @@ def get_api_key(api_key: str = Security(api_key_header)):
 class SensorData(BaseModel):
     features: List[float]
 
+
+# --- NEW: Admin Route to check the database ---
+@app.get("/admin/logs")
+def view_database_logs(api_key: str = Security(get_api_key)):
+    # Open a connection to the database
+    db = SessionLocal()
+    try:
+        # Fetch the 10 most recent logs
+        logs = db.query(PredictionRecord).order_by(PredictionRecord.timestamp.desc()).limit(10).all()
+        return {"total_logs_retrieved": len(logs), "logs": logs}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        db.close()
+# ----------------------------------------------
+
 @app.get("/")
 def health_check():
     return {
