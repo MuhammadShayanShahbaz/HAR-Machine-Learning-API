@@ -3,155 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HAR Architecture | Live Dashboard</title>
+    <title>HAR | Live Phone Stream</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Custom scrollbar for the log window */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
-    </style>
 </head>
-<body class="bg-slate-950 text-slate-200 font-sans antialiased min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black p-4 md:p-10">
+<body class="bg-slate-950 text-slate-200 font-sans min-h-screen flex flex-col items-center justify-center p-6">
 
-   <div class="bg-slate-900/50 backdrop-blur-sm p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col">
-    <h2 class="text-xl font-bold text-white flex items-center gap-2 mb-4">
-        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-        IoT Watch Simulator
-    </h2>
-    
-    <div class="mb-4">
-        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Select Sensor Profile</label>
-        <select id="activitySelect" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-slate-200 outline-none focus:border-indigo-500">
-            <option value="walking">🏃 Walking (High Activity)</option>
-            <option value="sitting">🪑 Sitting (Low Activity)</option>
-            <option value="laying">🛌 Laying (Static)</option>
-        </select>
-    </div>
+    <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl">
+        
+        <div id="statusDot" class="h-4 w-4 bg-red-500 rounded-full mx-auto mb-4 animate-pulse"></div>
+        <h1 class="text-2xl font-bold text-white mb-2">Real-Time Activity AI</h1>
+        <p class="text-slate-500 text-sm mb-8">WebSocket connected to Frankfurt</p>
 
-    <div class="bg-slate-950 rounded-lg p-4 mb-6 border border-slate-800">
-        <p class="text-xs text-slate-500 font-mono mb-2">// Raw Sensor Payload (Dynamic)</p>
-        <p id="payloadPreview" class="text-xs text-indigo-300 font-mono break-words opacity-80 h-12 overflow-hidden">
-            Select a profile to load sensor data...
-        </p>
-    </div>
-
-    <button id="predictBtn" onclick="sendPrediction()" class="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white font-bold py-3.5 px-6 rounded-lg transition-all duration-200 shadow-lg shadow-indigo-900/20 mb-6 flex justify-center items-center gap-2">
-        <span>Transmit Data to API</span>
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-    </button>
-    
-    <div class="mt-auto border-t border-slate-800 pt-6">
-        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Network Inference Result</h3>
-        <div id="liveResult" class="text-4xl font-black text-slate-600 tracking-tight transition-colors duration-300">
-            STANDBY
+        <div class="bg-slate-950 rounded-2xl p-8 mb-8 border border-slate-800">
+            <p class="text-xs text-slate-500 uppercase tracking-widest mb-2">Current State</p>
+            <div id="activityDisplay" class="text-4xl font-black text-indigo-400">WAITING</div>
+            
+            <div class="mt-6 flex justify-around text-xs font-mono text-slate-500">
+                <span id="accelX">X: 0.00</span>
+                <span id="accelY">Y: 0.00</span>
+                <span id="accelZ">Z: 0.00</span>
+            </div>
         </div>
+
+        <button id="startBtn" onclick="startSensors()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg transition-all">
+            Connect Phone Sensors
+        </button>
+
     </div>
-</div>
 
     <script>
-        const API_URL = "https://har-machine-learning-api.onrender.com";
+        // Use WSS (WebSocket Secure) instead of HTTPS
+        const WS_URL = "wss://har-machine-learning-api.onrender.com/ws/stream";
+        let socket;
+        let sensorInterval;
+        
+        // Variables to hold the raw physical movement
+        let currentX = 0, currentY = 0, currentZ = 0;
 
-        // Simulated Walking Data
-        const sampleData = {
-            "features": [
-                0.21453672, -0.032810366, -0.1237505, -0.31414012, 0.16878457, -0.3145, 
-                0.017050312, -0.26358088, 0.089926598, -0.51333686, -0.092099458, -0.39453324, 
-                0.26157241, 0.46864784, -0.22817041, -0.07011845, 0.16446842, -0.46531784, 
-                -0.20254208, 0.26796911, -0.36187344, -0.36342229, 0.037154851, -0.3420964, 
-                -0.41859899, -0.12196986, -0.29290754, -0.54385863, -0.080508105, -0.48720676, 
-                -0.15091057, -0.23784922, -0.21105942, -0.2265499
-            ]
-        };
+        function connectWebSocket() {
+            socket = new WebSocket(WS_URL);
 
-        async function sendPrediction() {
-            const key = document.getElementById('apiKey').value;
-            const btn = document.getElementById('predictBtn');
-            const resultDisplay = document.getElementById('liveResult');
-            
-            // UI Loading State
-            btn.disabled = true;
-            btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Transmitting...`;
-            btn.classList.replace('bg-indigo-600', 'bg-indigo-400');
-            resultDisplay.className = "text-4xl font-black text-indigo-400 animate-pulse";
-            resultDisplay.innerText = "PROCESSING";
+            socket.onopen = () => {
+                document.getElementById('statusDot').className = "h-4 w-4 bg-emerald-500 rounded-full mx-auto mb-4 animate-pulse";
+                document.getElementById('activityDisplay').innerText = "LINK ESTABLISHED";
+            };
 
-            try {
-                const response = await fetch(`${API_URL}/predict`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
-                    body: JSON.stringify(sampleData)
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    resultDisplay.innerText = data.predicted_activity;
-                    resultDisplay.className = "text-4xl font-black text-emerald-400";
-                    fetchLogs(); // Auto-refresh the logs!
-                } else {
-                    resultDisplay.innerText = "ACCESS DENIED";
-                    resultDisplay.className = "text-4xl font-black text-red-500";
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if(data.activity) {
+                    document.getElementById('activityDisplay').innerText = data.activity;
+                    // Flash green on new data
+                    document.getElementById('activityDisplay').className = "text-4xl font-black text-emerald-400 transition-colors";
+                    setTimeout(() => {
+                        document.getElementById('activityDisplay').className = "text-4xl font-black text-indigo-400 transition-colors";
+                    }, 200);
                 }
-            } catch (error) {
-                resultDisplay.innerText = "SERVER ERROR";
-                resultDisplay.className = "text-4xl font-black text-red-500";
-            } finally {
-                // Restore Button State
-                btn.disabled = false;
-                btn.innerHTML = `<span>Transmit Data to API</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>`;
-                btn.classList.replace('bg-indigo-400', 'bg-indigo-600');
-            }
+            };
+
+            socket.onclose = () => {
+                document.getElementById('statusDot').className = "h-4 w-4 bg-red-500 rounded-full mx-auto mb-4";
+                document.getElementById('activityDisplay').innerText = "DISCONNECTED";
+            };
         }
 
-        async function fetchLogs() {
-            const key = document.getElementById('apiKey').value;
-            const logArea = document.getElementById('logArea');
-            logArea.innerHTML = `<div class="flex justify-center py-8"><svg class="animate-spin h-6 w-6 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>`;
-
-            try {
-                const response = await fetch(`${API_URL}/admin/logs`, {
-                    method: 'GET',
-                    headers: { 'X-API-Key': key }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    logArea.innerHTML = ""; // Clear area
-                    
-                    if(data.logs.length === 0) {
-                        logArea.innerHTML = "<p class='text-slate-500 text-center text-sm mt-4'>No logs found in database.</p>";
+        async function startSensors() {
+            // iOS 13+ requires explicit permission for motion sensors
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const permissionState = await DeviceMotionEvent.requestPermission();
+                    if (permissionState === 'granted') {
+                        listenToHardware();
+                    } else {
+                        alert("Sensor access denied.");
                         return;
                     }
-
-                    data.logs.forEach(log => {
-                        const date = new Date(log.timestamp);
-                        const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second:'2-digit' });
-                        const dateString = date.toLocaleDateString();
-                        
-                        logArea.innerHTML += `
-                            <div class="bg-slate-950 p-4 rounded-lg border border-slate-800 flex justify-between items-center hover:border-slate-700 transition-colors">
-                                <div class="flex items-center gap-3">
-                                    <div class="h-2 w-2 rounded-full bg-emerald-500"></div>
-                                    <span class="font-bold text-slate-200 tracking-wide">${log.predicted_activity}</span>
-                                </div>
-                                <div class="text-right">
-                                    <p class="text-slate-300 text-sm font-mono">${timeString}</p>
-                                    <p class="text-slate-600 text-xs">${dateString}</p>
-                                </div>
-                            </div>
-                        `;
-                    });
-                } else {
-                    logArea.innerHTML = `<div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 text-sm text-center">Unauthorized to view logs. Check API Key.</div>`;
+                } catch (error) {
+                    console.error(error);
                 }
-            } catch (error) {
-                logArea.innerHTML = `<div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 text-sm text-center">Database Connection Failed.</div>`;
+            } else {
+                // Non-iOS devices usually don't need explicit permission
+                listenToHardware();
             }
+
+            document.getElementById('startBtn').style.display = 'none';
+            connectWebSocket();
         }
 
-        // Fetch logs as soon as the page loads
-        window.onload = fetchLogs;
+        function listenToHardware() {
+            // Read the physical accelerometer
+            window.addEventListener('devicemotion', (event) => {
+                currentX = event.accelerationIncludingGravity.x || 0;
+                currentY = event.accelerationIncludingGravity.y || 0;
+                currentZ = event.accelerationIncludingGravity.z || 0;
+
+                // Update UI
+                document.getElementById('accelX').innerText = `X: ${currentX.toFixed(2)}`;
+                document.getElementById('accelY').innerText = `Y: ${currentY.toFixed(2)}`;
+                document.getElementById('accelZ').innerText = `Z: ${currentZ.toFixed(2)}`;
+            });
+
+            // Stream data to Frankfurt every 200ms (5 times a second)
+            sensorInterval = setInterval(() => {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    
+                    // We grab the real phone X, Y, Z, and pad the remaining 31 features with 0 
+                    // so your specific ML model doesn't crash on size mismatch.
+                    let featureArray = [currentX, currentY, currentZ];
+                    while(featureArray.length < 34) {
+                        featureArray.push(0.0);
+                    }
+
+                    socket.send(JSON.stringify({ "features": featureArray }));
+                }
+            }, 200);
+        }
     </script>
 </body>
 </html>
