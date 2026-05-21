@@ -27,7 +27,7 @@ class SensorData(BaseModel):
 def health_check():
     return {
         "status": "Online",
-        "message": "Welcome to the HAR Machine Learning API. Visit /docs to interact with the model."
+        "message": "Welcome to the HAR Machine Learning API. Visit https://har-machine-learning-api.onrender.com/docs to interact with the model."
     }
 @app.post("/predict")
 def predict_activity(data: SensorData):
