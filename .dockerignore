@@ -1,0 +1,7 @@
+# Do not put these inside the container!
+.env
+__pycache__/
+.git/
+.gitignore
+*.csv
+index.html
