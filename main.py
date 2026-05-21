@@ -140,20 +140,21 @@ def predict_activity(data: SensorData, api_key: str = Security(get_api_key)):
 # --- NEW: Real-Time WebSocket IoT Stream ---
 @app.websocket("/ws/stream")
 async def websocket_stream(websocket: WebSocket):
-    # 1. Accept the live connection
     await websocket.accept()
     print("📱 Phone connected to live stream!")
     
+    # 1. Open a Database Session for this specific phone call
+    db = SessionLocal()
+    
+    # 2. Memory variable to prevent database flooding
+    last_logged_activity = None 
+    
     try:
-        # 2. Keep the connection open forever (until phone disconnects)
         while True:
-            # 3. Wait for the phone to send a frame of data
             data = await websocket.receive_text()
             payload = json.loads(data)
-            
             features = payload.get("features", [])
             
-            # Security Check: Ensure array is the right size (34)
             if len(features) == scaler.n_features_in_:
                 input_data = np.array(features).reshape(1, -1)
                 scaled_data = scaler.transform(input_data)
@@ -162,11 +163,26 @@ async def websocket_stream(websocket: WebSocket):
                 pred_str = str(prediction[0])
                 english_label = ACTIVITY_MAP.get(pred_str, "Unknown")
                 
-                # 4. Instantly shout the answer back to the phone
+                # --- NEW: Smart State-Change Logging ---
+                # Only write to PostgreSQL if the activity is DIFFERENT from the last one
+                if english_label != last_logged_activity:
+                    new_log = PredictionRecord(
+                        predicted_class=pred_str,
+                        predicted_activity=english_label
+                    )
+                    db.add(new_log)
+                    db.commit()
+                    
+                    last_logged_activity = english_label
+                    print(f"💾 Saved new state to Frankfurt DB: {english_label}")
+                # ---------------------------------------
+
                 await websocket.send_text(json.dumps({"activity": english_label}))
             else:
                 await websocket.send_text(json.dumps({"error": "Invalid feature length"}))
                 
     except WebSocketDisconnect:
         print("📱 Phone disconnected from stream.")
-# -------------------------------------------
+    finally:
+        # 3. CRITICAL: Always close the database connection when the phone hangs up
+        db.close()
