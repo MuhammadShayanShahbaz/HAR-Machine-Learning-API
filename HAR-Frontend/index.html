@@ -3,45 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HAR AI Dashboard</title>
+    <title>HAR Architecture | Live Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for the log window */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
 </head>
-<body class="bg-gray-900 text-white font-sans p-10">
+<body class="bg-slate-950 text-slate-200 font-sans antialiased min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black p-4 md:p-10">
 
-    <div class="max-w-4xl mx-auto">
-        <h1 class="text-4xl font-bold text-blue-400 mb-2">Human Activity Recognition AI</h1>
-        <p class="text-gray-400 mb-8">Live Neural Network Dashboard connected to Frankfurt Postgres Database</p>
+   <div class="bg-slate-900/50 backdrop-blur-sm p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col">
+    <h2 class="text-xl font-bold text-white flex items-center gap-2 mb-4">
+        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+        IoT Watch Simulator
+    </h2>
+    
+    <div class="mb-4">
+        <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Select Sensor Profile</label>
+        <select id="activitySelect" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-slate-200 outline-none focus:border-indigo-500">
+            <option value="walking">🏃 Walking (High Activity)</option>
+            <option value="sitting">🪑 Sitting (Low Activity)</option>
+            <option value="laying">🛌 Laying (Static)</option>
+        </select>
+    </div>
 
-        <div class="mb-8 bg-gray-800 p-6 rounded-lg border border-gray-700">
-            <label class="block text-sm font-bold mb-2">Admin API Key:</label>
-            <input type="password" id="apiKey" value="sk-shayan-secure-key-2026" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white">
-        </div>
+    <div class="bg-slate-950 rounded-lg p-4 mb-6 border border-slate-800">
+        <p class="text-xs text-slate-500 font-mono mb-2">// Raw Sensor Payload (Dynamic)</p>
+        <p id="payloadPreview" class="text-xs text-indigo-300 font-mono break-words opacity-80 h-12 overflow-hidden">
+            Select a profile to load sensor data...
+        </p>
+    </div>
 
-        <div class="grid grid-cols-2 gap-8">
-            <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
-                <h2 class="text-2xl font-semibold mb-4">Simulate Watch Data</h2>
-                <button onclick="sendPrediction()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded w-full transition duration-200">
-                    Send "Walking" Data to AI
-                </button>
-                
-                <div class="mt-6">
-                    <h3 class="text-sm text-gray-400">Live Prediction Result:</h3>
-                    <div id="liveResult" class="text-3xl font-bold text-green-400 mt-2">--</div>
-                </div>
-            </div>
-
-            <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-2xl font-semibold">Database Memory</h2>
-                    <button onclick="fetchLogs()" class="bg-gray-700 hover:bg-gray-600 text-white py-1 px-3 rounded text-sm">Refresh Logs</button>
-                </div>
-                
-                <div id="logArea" class="space-y-3 h-64 overflow-y-auto pr-2">
-                    <p class="text-gray-500 italic">Click refresh to load database logs...</p>
-                </div>
-            </div>
+    <button id="predictBtn" onclick="sendPrediction()" class="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white font-bold py-3.5 px-6 rounded-lg transition-all duration-200 shadow-lg shadow-indigo-900/20 mb-6 flex justify-center items-center gap-2">
+        <span>Transmit Data to API</span>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+    </button>
+    
+    <div class="mt-auto border-t border-slate-800 pt-6">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Network Inference Result</h3>
+        <div id="liveResult" class="text-4xl font-black text-slate-600 tracking-tight transition-colors duration-300">
+            STANDBY
         </div>
     </div>
+</div>
 
     <script>
         const API_URL = "https://har-machine-learning-api.onrender.com";
@@ -60,7 +67,15 @@
 
         async function sendPrediction() {
             const key = document.getElementById('apiKey').value;
-            document.getElementById('liveResult').innerText = "Processing...";
+            const btn = document.getElementById('predictBtn');
+            const resultDisplay = document.getElementById('liveResult');
+            
+            // UI Loading State
+            btn.disabled = true;
+            btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Transmitting...`;
+            btn.classList.replace('bg-indigo-600', 'bg-indigo-400');
+            resultDisplay.className = "text-4xl font-black text-indigo-400 animate-pulse";
+            resultDisplay.innerText = "PROCESSING";
 
             try {
                 const response = await fetch(`${API_URL}/predict`, {
@@ -71,20 +86,28 @@
                 
                 if (response.ok) {
                     const data = await response.json();
-                    document.getElementById('liveResult').innerText = data.predicted_activity;
+                    resultDisplay.innerText = data.predicted_activity;
+                    resultDisplay.className = "text-4xl font-black text-emerald-400";
                     fetchLogs(); // Auto-refresh the logs!
                 } else {
-                    document.getElementById('liveResult').innerText = "❌ Access Denied";
+                    resultDisplay.innerText = "ACCESS DENIED";
+                    resultDisplay.className = "text-4xl font-black text-red-500";
                 }
             } catch (error) {
-                document.getElementById('liveResult').innerText = "Server Error";
+                resultDisplay.innerText = "SERVER ERROR";
+                resultDisplay.className = "text-4xl font-black text-red-500";
+            } finally {
+                // Restore Button State
+                btn.disabled = false;
+                btn.innerHTML = `<span>Transmit Data to API</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>`;
+                btn.classList.replace('bg-indigo-400', 'bg-indigo-600');
             }
         }
 
         async function fetchLogs() {
             const key = document.getElementById('apiKey').value;
             const logArea = document.getElementById('logArea');
-            logArea.innerHTML = "<p class='text-gray-400'>Loading...</p>";
+            logArea.innerHTML = `<div class="flex justify-center py-8"><svg class="animate-spin h-6 w-6 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>`;
 
             try {
                 const response = await fetch(`${API_URL}/admin/logs`, {
@@ -96,22 +119,34 @@
                     const data = await response.json();
                     logArea.innerHTML = ""; // Clear area
                     
+                    if(data.logs.length === 0) {
+                        logArea.innerHTML = "<p class='text-slate-500 text-center text-sm mt-4'>No logs found in database.</p>";
+                        return;
+                    }
+
                     data.logs.forEach(log => {
-                        // Format the timestamp
-                        const date = new Date(log.timestamp).toLocaleTimeString();
+                        const date = new Date(log.timestamp);
+                        const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second:'2-digit' });
+                        const dateString = date.toLocaleDateString();
                         
                         logArea.innerHTML += `
-                            <div class="bg-gray-900 p-3 rounded border border-gray-700 flex justify-between">
-                                <span class="font-bold text-blue-400">${log.predicted_activity}</span>
-                                <span class="text-gray-500 text-sm">${date}</span>
+                            <div class="bg-slate-950 p-4 rounded-lg border border-slate-800 flex justify-between items-center hover:border-slate-700 transition-colors">
+                                <div class="flex items-center gap-3">
+                                    <div class="h-2 w-2 rounded-full bg-emerald-500"></div>
+                                    <span class="font-bold text-slate-200 tracking-wide">${log.predicted_activity}</span>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-slate-300 text-sm font-mono">${timeString}</p>
+                                    <p class="text-slate-600 text-xs">${dateString}</p>
+                                </div>
                             </div>
                         `;
                     });
                 } else {
-                    logArea.innerHTML = "<p class='text-red-500'>❌ Unauthorized to view logs</p>";
+                    logArea.innerHTML = `<div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 text-sm text-center">Unauthorized to view logs. Check API Key.</div>`;
                 }
             } catch (error) {
-                logArea.innerHTML = "<p class='text-red-500'>Connection Failed</p>";
+                logArea.innerHTML = `<div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-400 text-sm text-center">Database Connection Failed.</div>`;
             }
         }
 

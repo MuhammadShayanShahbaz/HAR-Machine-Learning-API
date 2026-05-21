@@ -2,13 +2,14 @@ import os
 import joblib
 import numpy as np
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi import FastAPI, HTTPException, Security, status, WebSocket, WebSocketDisconnect
+import json
+import asyncio
 # --- NEW: Database Libraries ---
 from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -135,3 +136,37 @@ def predict_activity(data: SensorData, api_key: str = Security(get_api_key)):
         "class_id": pred_str,
         "predicted_activity": english_label
     }
+
+# --- NEW: Real-Time WebSocket IoT Stream ---
+@app.websocket("/ws/stream")
+async def websocket_stream(websocket: WebSocket):
+    # 1. Accept the live connection
+    await websocket.accept()
+    print("📱 Phone connected to live stream!")
+    
+    try:
+        # 2. Keep the connection open forever (until phone disconnects)
+        while True:
+            # 3. Wait for the phone to send a frame of data
+            data = await websocket.receive_text()
+            payload = json.loads(data)
+            
+            features = payload.get("features", [])
+            
+            # Security Check: Ensure array is the right size (34)
+            if len(features) == scaler.n_features_in_:
+                input_data = np.array(features).reshape(1, -1)
+                scaled_data = scaler.transform(input_data)
+                prediction = model.predict(scaled_data)
+                
+                pred_str = str(prediction[0])
+                english_label = ACTIVITY_MAP.get(pred_str, "Unknown")
+                
+                # 4. Instantly shout the answer back to the phone
+                await websocket.send_text(json.dumps({"activity": english_label}))
+            else:
+                await websocket.send_text(json.dumps({"error": "Invalid feature length"}))
+                
+    except WebSocketDisconnect:
+        print("📱 Phone disconnected from stream.")
+# -------------------------------------------
