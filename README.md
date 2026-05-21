@@ -34,3 +34,19 @@ Because the backend is fully containerized, you can spin up the entire API envir
 ```bash
 git clone [https://github.com/yourusername/har-machine-learning-api.git](https://github.com/yourusername/har-machine-learning-api.git)
 cd har-machine-learning-api
+
+```
+## 2. Set up your Environment Variables
+* ** Create a .env file in the root directory and add your credentials:
+Plaintext
+DATABASE_URL=postgresql://user:password@localhost:5432/hardb
+API_KEY=your-secure-secret-key
+
+## 3. Build and Run the Docker Container
+
+Bash
+docker build -t har-api .
+docker run -p 8000:8000 --env-file .env har-api
+
+## 4. Connect the Client
+* **Open index.html in your mobile device's web browser, grant sensor permissions, and place the device in your pocket to begin real-time inference streaming.
