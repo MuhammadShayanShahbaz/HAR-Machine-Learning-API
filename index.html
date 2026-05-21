@@ -5,74 +5,105 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HAR | Edge Computing Stream</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar and animations for a polished feel */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .glass-panel { background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(51, 65, 85, 0.5); }
+    </style>
 </head>
-<body class="bg-slate-950 text-slate-200 font-sans min-h-screen flex flex-col items-center justify-center p-6">
+<body class="bg-slate-950 text-slate-200 font-sans min-h-screen flex flex-col items-center justify-center p-4 md:p-6 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black">
 
-    <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl">
+    <div class="max-w-md w-full glass-panel rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden">
         
-        <div id="statusDot" class="h-4 w-4 bg-red-500 rounded-full mx-auto mb-4 animate-pulse"></div>
-        <h1 class="text-2xl font-bold text-white mb-2">Real-Time Edge AI</h1>
-        <p class="text-slate-500 text-sm mb-8">Processing features locally, streaming to Frankfurt</p>
+        <div class="absolute top-6 right-6 flex items-center gap-2">
+            <span id="networkText" class="text-xs font-mono text-slate-500 uppercase tracking-widest">Offline</span>
+            <div id="statusDot" class="h-3 w-3 bg-red-500 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.6)] transition-colors duration-300"></div>
+        </div>
 
-        <div class="bg-slate-950 rounded-2xl p-8 mb-8 border border-slate-800">
-            <p class="text-xs text-slate-500 uppercase tracking-widest mb-2">Predicted Activity</p>
-            <div id="activityDisplay" class="text-3xl font-black text-indigo-400">WAITING...</div>
+        <h1 class="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 mb-2 mt-4">
+            Edge Intelligence
+        </h1>
+        <p class="text-slate-400 text-sm mb-8 font-medium">Local feature extraction & cloud telemetry</p>
+
+        <div class="bg-slate-900/80 rounded-2xl p-6 mb-8 border border-slate-800 shadow-inner">
+            <p class="text-[10px] text-slate-500 uppercase tracking-widest mb-3 font-semibold">Inference Engine Output</p>
+            <div id="activityDisplay" class="text-3xl font-black text-slate-600 tracking-tight transition-all duration-300">
+                STANDBY
+            </div>
             
-            <div class="mt-6 flex justify-around text-xs font-mono text-slate-500">
-                <span id="calcMsg">Buffer Empty</span>
+            <div class="mt-6 pt-4 border-t border-slate-800/50 flex justify-between items-center text-xs font-mono">
+                <div class="text-slate-500 flex flex-col items-start">
+                    <span class="uppercase text-[9px] tracking-wider mb-1">Processor State</span>
+                    <span id="calcMsg" class="text-cyan-500 font-semibold">Awaiting Sensor Hook</span>
+                </div>
+                <div class="text-right flex flex-col items-end">
+                    <span class="uppercase text-[9px] text-slate-500 tracking-wider mb-1">Buffer Memory</span>
+                    <span id="bufferStatus" class="text-slate-300">0 / 25</span>
+                </div>
             </div>
         </div>
 
-        <button id="startBtn" onclick="startSensors()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg transition-all">
-            Connect & Start Edge Processing
+        <button id="startBtn" onclick="SystemController.initialize()" class="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)] active:scale-[0.98] transition-all duration-200">
+            Initialize Sensor Array
         </button>
-
     </div>
 
     <script>
-        const WS_URL = "wss://har-machine-learning-api.onrender.com/ws/stream";
-        let socket;
+        const CONFIG = {
+            WS_URL: "wss://har-machine-learning-api.onrender.com/ws/stream",
+            BUFFER_SIZE: 25,
+            TICK_RATE_MS: 500,
+            MAX_RECONNECT_ATTEMPTS: 5
+        };
 
-        // --- THE UPGRADED EDGE COMPUTING ENGINE ---
-        class FeatureExtractor {
-            constructor() {
+        // --- CORE MATH & EDGE COMPUTING ENGINE ---
+        class EdgeProcessor {
+            constructor(windowSize) {
                 this.buffer = [];
-                this.windowSize = 25; // Store 25 readings (~1 second window)
+                this.windowSize = windowSize;
             }
 
-            addReading(accX, accY, accZ, gyroX, gyroY, gyroZ) {
-                this.buffer.push({ ax: accX, ay: accY, az: accZ, gx: gyroX, gy: gyroY, gz: gyroZ });
-                if (this.buffer.length > this.windowSize) this.buffer.shift();
+            pushTelemetry(ax, ay, az, gx, gy, gz) {
+                this.buffer.push({ ax, ay, az, gx, gy, gz });
+                if (this.buffer.length > this.windowSize) {
+                    this.buffer.shift(); // O(1) Queue behavior
+                }
+                UI.updateBufferCount(this.buffer.length, this.windowSize);
             }
 
-            getFeatures() {
-                if (this.buffer.length < this.windowSize) return null;
+            isReady() {
+                return this.buffer.length === this.windowSize;
+            }
 
-                let ax = this.buffer.map(d => d.ax), ay = this.buffer.map(d => d.ay), az = this.buffer.map(d => d.az);
-                let gx = this.buffer.map(d => d.gx), gy = this.buffer.map(d => d.gy), gz = this.buffer.map(d => d.gz);
+            extractFeatures() {
+                if (!this.isReady()) return null;
 
-                // Math Helper Functions
-                const mean = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
-                const std = (arr, m) => Math.sqrt(arr.reduce((a, b) => a + Math.pow(b - m, 2), 0) / arr.length);
+                // O(n) Extraction - Loop exactly once instead of 6 separate maps
+                let ax = [], ay = [], az = [], gx = [], gy = [], gz = [];
+                for (let i = 0; i < this.windowSize; i++) {
+                    const b = this.buffer[i];
+                    ax.push(b.ax); ay.push(b.ay); az.push(b.az);
+                    gx.push(b.gx); gy.push(b.gy); gz.push(b.gz);
+                }
+
+                // Precision Math Helpers
+                const mean = arr => arr.reduce((a, b) => a + b, 0) / (arr.length || 1);
+                const std = (arr, m) => Math.sqrt(arr.reduce((a, b) => a + Math.pow(b - m, 2), 0) / (arr.length || 1));
                 const jerk = arr => { let j = []; for(let i=1; i<arr.length; i++) j.push(arr[i]-arr[i-1]); return j; };
                 const mag = (x, y, z) => { let m = []; for(let i=0; i<x.length; i++) m.push(Math.sqrt(x[i]**2 + y[i]**2 + z[i]**2)); return m; };
 
-                // --- THE NORMALIZATION FIX ---
-                // The AI expects features squished between -1 and 1. 
-                // Zero physical movement MUST be mathematically mapped to -1.0!
+                // Normalization Constants
+                const MAX_A = 6.0; const MAX_G = 4.0; const MAX_J = 10.0;
                 const normMean = (val, max) => Math.max(-1, Math.min(1, val / max));
-                const normPositive = (val, max) => Math.max(-1, Math.min(1, (val / max) * 2 - 1)); // Maps 0 -> -1
-
-                const MAX_A = 6.0; // Max expected acceleration
-                const MAX_G = 4.0; // Max expected gyro
-                const MAX_J = 10.0; // Max expected jerk
+                const normPos = (val, max) => Math.max(-1, Math.min(1, (val / max) * 2 - 1));
 
                 // 1. Raw Means
                 let r_m_ax = mean(ax), r_m_ay = mean(ay), r_m_az = mean(az);
                 let r_m_gx = mean(gx), r_m_gy = mean(gy), r_m_gz = mean(gz);
 
-                // 2. Normalized Means + UCI Dataset Baseline Offsets
-                // The dataset has a constant gravity leakage offset. We inject it here so the AI recognizes "Resting".
+                // 2. Normalized Means + Baseline Gravity Compensation
                 let m_ax = normMean(r_m_ax, MAX_A) + 0.27;
                 let m_ay = normMean(r_m_ay, MAX_A) - 0.01;
                 let m_az = normMean(r_m_az, MAX_A) - 0.10;
@@ -80,88 +111,156 @@
                 let m_gy = normMean(r_m_gy, MAX_G) - 0.04;
                 let m_gz = normMean(r_m_gz, MAX_G) + 0.09;
 
-                // 3. Standard Deviations (Using normPositive so 0 physical movement maps to -1)
-                let s_ax = normPositive(std(ax, r_m_ax), MAX_A), s_ay = normPositive(std(ay, r_m_ay), MAX_A), s_az = normPositive(std(az, r_m_az), MAX_A);
-                let s_gx = normPositive(std(gx, r_m_gx), MAX_G), s_gy = normPositive(std(gy, r_m_gy), MAX_G), s_gz = normPositive(std(gz, r_m_gz), MAX_G);
+                // 3. Normalized Standard Deviations
+                let s_ax = normPos(std(ax, r_m_ax), MAX_A), s_ay = normPos(std(ay, r_m_ay), MAX_A), s_az = normPos(std(az, r_m_az), MAX_A);
+                let s_gx = normPos(std(gx, r_m_gx), MAX_G), s_gy = normPos(std(gy, r_m_gy), MAX_G), s_gz = normPos(std(gz, r_m_gz), MAX_G);
 
-                // 4. Jerk (Change in acceleration over time)
+                // 4. Jerk (Derivative of Acceleration)
                 let jx = jerk(ax), jy = jerk(ay), jz = jerk(az);
                 let r_m_jx = mean(jx), r_m_jy = mean(jy), r_m_jz = mean(jz);
                 
                 let m_jx = normMean(r_m_jx, MAX_J), m_jy = normMean(r_m_jy, MAX_J), m_jz = normMean(r_m_jz, MAX_J);
-                let s_jx = normPositive(std(jx, r_m_jx), MAX_J), s_jy = normPositive(std(jy, r_m_jy), MAX_J), s_jz = normPositive(std(jz, r_m_jz), MAX_J);
+                let s_jx = normPos(std(jx, r_m_jx), MAX_J), s_jy = normPos(std(jy, r_m_jy), MAX_J), s_jz = normPos(std(jz, r_m_jz), MAX_J);
 
-                // 5. Magnitude
+                // 5. Signal Magnitude Area
                 let aMag = mag(ax, ay, az), gMag = mag(gx, gy, gz);
-                let m_aMag = normPositive(mean(aMag), MAX_A), s_aMag = normPositive(std(aMag, mean(aMag)), MAX_A);
-                let m_gMag = normPositive(mean(gMag), MAX_G), s_gMag = normPositive(std(gMag, mean(gMag)), MAX_G);
+                let m_aMag = normPos(mean(aMag), MAX_A), s_aMag = normPos(std(aMag, mean(aMag)), MAX_A);
+                let m_gMag = normPos(mean(gMag), MAX_G), s_gMag = normPos(std(gMag, mean(gMag)), MAX_G);
 
-                // Construct the exact 34-Feature Array expected by the AI
-                return [
+                // Construct and precisely format 34-feature payload (Floats to 6 decimals)
+                const rawFeatures = [
                     m_ax, m_ay, m_az, s_ax, s_ay, s_az,  
                     m_gx, m_gy, m_gz, s_gx, s_gy, s_gz,  
                     m_jx, m_jy, m_jz, s_jx, s_jy, s_jz,  
-                    m_ax, m_ay, m_az, s_ax, s_ay, s_az,  // Reusing normalized time-domain for freq-domain approximations
+                    m_ax, m_ay, m_az, s_ax, s_ay, s_az, 
                     m_gx, m_gy, m_gz, s_gx, s_gy, s_gz,  
                     m_aMag, s_aMag, m_gMag, s_gMag       
                 ];
+
+                return rawFeatures.map(f => parseFloat(f.toFixed(6)));
             }
         }
 
-        const edgeComputer = new FeatureExtractor();
+        // --- DOM MANIPULATION & UI STATE ---
+        const UI = {
+            setDisplay: (text, colorClass) => {
+                const el = document.getElementById('activityDisplay');
+                el.innerText = text;
+                el.className = `text-3xl font-black tracking-tight transition-all duration-300 ${colorClass}`;
+            },
+            setNetworkStatus: (status, color) => {
+                document.getElementById('networkText').innerText = status;
+                document.getElementById('statusDot').className = `h-3 w-3 rounded-full shadow-[0_0_10px_${color}] bg-${color.replace('rgba(','').split(',')[0]}-500`;
+                if(status === 'Connected') document.getElementById('statusDot').classList.add('bg-emerald-500');
+                else if(status === 'Reconnecting...') document.getElementById('statusDot').classList.add('bg-yellow-500', 'animate-ping');
+                else document.getElementById('statusDot').classList.add('bg-red-500');
+            },
+            updateBufferCount: (current, max) => {
+                document.getElementById('bufferStatus').innerText = `${current} / ${max}`;
+            },
+            setProcessorState: (msg, isStreaming = false) => {
+                const el = document.getElementById('calcMsg');
+                el.innerText = msg;
+                el.className = isStreaming ? "text-emerald-400 font-semibold animate-pulse" : "text-cyan-500 font-semibold";
+            },
+            hideButton: () => document.getElementById('startBtn').style.display = 'none'
+        };
 
-        function connectWebSocket() {
-            socket = new WebSocket(WS_URL);
-            socket.onopen = () => {
-                document.getElementById('statusDot').className = "h-4 w-4 bg-emerald-500 rounded-full mx-auto mb-4 animate-pulse";
-            };
-            socket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if(data.activity) {
-                    document.getElementById('activityDisplay').innerText = data.activity;
-                    document.getElementById('activityDisplay').className = "text-3xl font-black text-emerald-400";
-                    setTimeout(() => document.getElementById('activityDisplay').className = "text-3xl font-black text-indigo-400", 200);
-                }
-            };
-        }
+        // --- SYSTEM CONTROLLER (The Brain) ---
+        const SystemController = {
+            socket: null,
+            processor: new EdgeProcessor(CONFIG.BUFFER_SIZE),
+            reconnectAttempts: 0,
+            intervalId: null,
 
-        async function startSensors() {
-            if (typeof DeviceMotionEvent.requestPermission === 'function') {
-                try {
-                    const permissionState = await DeviceMotionEvent.requestPermission();
-                    if (permissionState !== 'granted') return alert("Sensor access denied.");
-                } catch (error) { console.error(error); }
-            }
-            
-            document.getElementById('startBtn').style.display = 'none';
-            connectWebSocket();
-
-            // Listen to Phone Hardware (Without Gravity)
-            window.addEventListener('devicemotion', (event) => {
-                let ax = event.acceleration.x || 0;
-                let ay = event.acceleration.y || 0;
-                let az = event.acceleration.z || 0;
-                
-                let gx = event.rotationRate ? (event.rotationRate.alpha || 0) : 0;
-                let gy = event.rotationRate ? (event.rotationRate.beta || 0) : 0;
-                let gz = event.rotationRate ? (event.rotationRate.gamma || 0) : 0;
-
-                edgeComputer.addReading(ax, ay, az, gx, gy, gz);
-            });
-
-            // Every 500ms, extract features and send to cloud
-            setInterval(() => {
-                let features = edgeComputer.getFeatures();
-                if (features) {
-                    document.getElementById('calcMsg').innerText = "Streaming 34 features...";
-                    if (socket && socket.readyState === WebSocket.OPEN) {
-                        socket.send(JSON.stringify({ "features": features }));
+            async initialize() {
+                // Request Hardware Permissions securely
+                if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                    try {
+                        const permissionState = await DeviceMotionEvent.requestPermission();
+                        if (permissionState !== 'granted') {
+                            alert("CRITICAL: Accelerometer access denied. System halted.");
+                            return;
+                        }
+                    } catch (error) { 
+                        console.error("Hardware Handshake Error:", error); 
+                        return;
                     }
-                } else {
-                    document.getElementById('calcMsg').innerText = "Filling Buffer...";
                 }
-            }, 500);
-        }
+                
+                UI.hideButton();
+                this.connectTelemetry();
+                this.hookSensors();
+                this.startEngine();
+            },
+
+            connectTelemetry() {
+                UI.setNetworkStatus("Connecting...", "rgba(234,179,8,0.6)"); // Yellow
+                this.socket = new WebSocket(CONFIG.WS_URL);
+
+                this.socket.onopen = () => {
+                    this.reconnectAttempts = 0;
+                    UI.setNetworkStatus("Connected", "rgba(16,185,129,0.6)"); // Emerald
+                };
+
+                this.socket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if(data.activity) {
+                            UI.setDisplay(data.activity, "text-emerald-400");
+                            // Brief pulse to indigo to show processing loop completed
+                            setTimeout(() => UI.setDisplay(data.activity, "text-indigo-400"), 250);
+                        }
+                    } catch (e) {
+                        console.warn("Telemetry Parse Error");
+                    }
+                };
+
+                this.socket.onclose = () => {
+                    if (this.reconnectAttempts < CONFIG.MAX_RECONNECT_ATTEMPTS) {
+                        this.reconnectAttempts++;
+                        UI.setNetworkStatus("Reconnecting...", "rgba(234,179,8,0.6)");
+                        setTimeout(() => this.connectTelemetry(), 2000 * this.reconnectAttempts); // Exponential backoff
+                    } else {
+                        UI.setNetworkStatus("Offline", "rgba(239,68,68,0.6)");
+                        UI.setDisplay("CONNECTION LOST", "text-red-500");
+                    }
+                };
+            },
+
+            hookSensors() {
+                window.addEventListener('devicemotion', (event) => {
+                    const ax = event.acceleration.x || 0;
+                    const ay = event.acceleration.y || 0;
+                    const az = event.acceleration.z || 0;
+                    const gx = event.rotationRate ? (event.rotationRate.alpha || 0) : 0;
+                    const gy = event.rotationRate ? (event.rotationRate.beta || 0) : 0;
+                    const gz = event.rotationRate ? (event.rotationRate.gamma || 0) : 0;
+
+                    this.processor.pushTelemetry(ax, ay, az, gx, gy, gz);
+                });
+            },
+
+            startEngine() {
+                if (this.intervalId) clearInterval(this.intervalId);
+                
+                this.intervalId = setInterval(() => {
+                    if (!this.processor.isReady()) {
+                        UI.setProcessorState("Aggregating Memory...");
+                        return;
+                    }
+
+                    const features = this.processor.extractFeatures();
+                    
+                    if (features && this.socket && this.socket.readyState === WebSocket.OPEN) {
+                        UI.setProcessorState("Streaming Tensor Array", true);
+                        this.socket.send(JSON.stringify({ "features": features }));
+                    } else {
+                        UI.setProcessorState("Awaiting Telemetry Link...", false);
+                    }
+                }, CONFIG.TICK_RATE_MS);
+            }
+        };
     </script>
 </body>
 </html>
