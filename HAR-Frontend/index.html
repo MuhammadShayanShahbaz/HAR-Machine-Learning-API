@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HAR AI Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans p-10">
+
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-4xl font-bold text-blue-400 mb-2">Human Activity Recognition AI</h1>
+        <p class="text-gray-400 mb-8">Live Neural Network Dashboard connected to Frankfurt Postgres Database</p>
+
+        <div class="mb-8 bg-gray-800 p-6 rounded-lg border border-gray-700">
+            <label class="block text-sm font-bold mb-2">Admin API Key:</label>
+            <input type="password" id="apiKey" value="sk-shayan-secure-key-2026" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white">
+        </div>
+
+        <div class="grid grid-cols-2 gap-8">
+            <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                <h2 class="text-2xl font-semibold mb-4">Simulate Watch Data</h2>
+                <button onclick="sendPrediction()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded w-full transition duration-200">
+                    Send "Walking" Data to AI
+                </button>
+                
+                <div class="mt-6">
+                    <h3 class="text-sm text-gray-400">Live Prediction Result:</h3>
+                    <div id="liveResult" class="text-3xl font-bold text-green-400 mt-2">--</div>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-semibold">Database Memory</h2>
+                    <button onclick="fetchLogs()" class="bg-gray-700 hover:bg-gray-600 text-white py-1 px-3 rounded text-sm">Refresh Logs</button>
+                </div>
+                
+                <div id="logArea" class="space-y-3 h-64 overflow-y-auto pr-2">
+                    <p class="text-gray-500 italic">Click refresh to load database logs...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "https://har-machine-learning-api.onrender.com";
+
+        // Simulated Walking Data
+        const sampleData = {
+            "features": [
+                0.21453672, -0.032810366, -0.1237505, -0.31414012, 0.16878457, -0.3145, 
+                0.017050312, -0.26358088, 0.089926598, -0.51333686, -0.092099458, -0.39453324, 
+                0.26157241, 0.46864784, -0.22817041, -0.07011845, 0.16446842, -0.46531784, 
+                -0.20254208, 0.26796911, -0.36187344, -0.36342229, 0.037154851, -0.3420964, 
+                -0.41859899, -0.12196986, -0.29290754, -0.54385863, -0.080508105, -0.48720676, 
+                -0.15091057, -0.23784922, -0.21105942, -0.2265499
+            ]
+        };
+
+        async function sendPrediction() {
+            const key = document.getElementById('apiKey').value;
+            document.getElementById('liveResult').innerText = "Processing...";
+
+            try {
+                const response = await fetch(`${API_URL}/predict`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+                    body: JSON.stringify(sampleData)
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('liveResult').innerText = data.predicted_activity;
+                    fetchLogs(); // Auto-refresh the logs!
+                } else {
+                    document.getElementById('liveResult').innerText = "❌ Access Denied";
+                }
+            } catch (error) {
+                document.getElementById('liveResult').innerText = "Server Error";
+            }
+        }
+
+        async function fetchLogs() {
+            const key = document.getElementById('apiKey').value;
+            const logArea = document.getElementById('logArea');
+            logArea.innerHTML = "<p class='text-gray-400'>Loading...</p>";
+
+            try {
+                const response = await fetch(`${API_URL}/admin/logs`, {
+                    method: 'GET',
+                    headers: { 'X-API-Key': key }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    logArea.innerHTML = ""; // Clear area
+                    
+                    data.logs.forEach(log => {
+                        // Format the timestamp
+                        const date = new Date(log.timestamp).toLocaleTimeString();
+                        
+                        logArea.innerHTML += `
+                            <div class="bg-gray-900 p-3 rounded border border-gray-700 flex justify-between">
+                                <span class="font-bold text-blue-400">${log.predicted_activity}</span>
+                                <span class="text-gray-500 text-sm">${date}</span>
+                            </div>
+                        `;
+                    });
+                } else {
+                    logArea.innerHTML = "<p class='text-red-500'>❌ Unauthorized to view logs</p>";
+                }
+            } catch (error) {
+                logArea.innerHTML = "<p class='text-red-500'>Connection Failed</p>";
+            }
+        }
+
+        // Fetch logs as soon as the page loads
+        window.onload = fetchLogs;
+    </script>
+</body>
+</html>

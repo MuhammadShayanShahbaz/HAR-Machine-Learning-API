@@ -7,6 +7,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 
 # --- NEW: Database Libraries ---
 from sqlalchemy import create_engine, Column, Integer, String, DateTime
@@ -47,7 +48,14 @@ ACTIVITY_MAP = {
 }
 
 app = FastAPI()
-
+# --- THE TRUST PROTOCOL ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Allows any browser to connect
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# --------------------------
 # --- SECURITY PROTOCOL ---
 API_KEY = os.getenv("API_KEY")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
