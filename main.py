@@ -29,17 +29,23 @@ app = FastAPI()
 # --- SECURITY PROTOCOL ---
 # Fetch the key securely from the operating system environment
 API_KEY = os.getenv("API_KEY")
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
 def get_api_key(api_key: str = Security(api_key_header)):
+    # PATCH 2: If the server itself forgot the password, lock everything down.
+    if API_KEY is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server Security Configuration Error"
+        )
+        
+    # PATCH 3: The strict password check
     if api_key == API_KEY:
         return api_key
+        
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Access Denied: Invalid or missing API Key"
+        detail="Access Denied: Invalid API Key"
     )
-# -------------------------
-
 class SensorData(BaseModel):
     features: List[float]
 
