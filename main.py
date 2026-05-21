@@ -23,7 +23,12 @@ app = FastAPI()
 
 class SensorData(BaseModel):
     features: List[float]
-
+@app.get("/")
+def health_check():
+    return {
+        "status": "Online",
+        "message": "Welcome to the HAR Machine Learning API. Visit /docs to interact with the model."
+    }
 @app.post("/predict")
 def predict_activity(data: SensorData):
     # Validate the data length
